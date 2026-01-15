@@ -1,0 +1,99 @@
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mindmap-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background-image: radial-gradient(var(--dot-color) 1px, transparent 1px);
+  background-size: 20px 20px;
+  cursor: grab;
+  transition: transform 0.1s ease-out;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.mindmap-container.panning {
+  cursor: grabbing;
+}
+
+.connections {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.connection {
+  fill: none;
+  stroke: #9ca3af;
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+
+.nodes-layer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Match gptoss mockup EXACTLY */
+.node {
+  position: absolute;
+  min-width: 100px;
+  min-height: 30px;
+  padding: 8px 12px;
+  background: #ffffff;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  cursor: move;
+  user-select: none; /* avoid text selection while dragging */
+}
+
+.node.selected {
+  border-color: #4a90e2;
+  box-shadow: 0 0 0 4px rgba(74, 144, 226, 0.2);
+  z-index: 100;
+}
+
+.node-content {
+  outline: none;
+  min-height: 1.2em;
+  direction: ltr;
+  text-align: left;
+  /* Allow text selection when editing */
+  user-select: text;
+}
+
+.node-content:focus {
+  border-bottom: 1px dotted #4a90e2;
+  cursor: text;
+}
+
+/* Mobile viewport adjustments */
+@media (max-width: 768px) {
+  .node {
+    min-width: 80px;
+    padding: 8px 12px;
+    font-size: 16px; /* Larger font for better touch targets */
+  }
+  
+  .node-content {
+    font-size: 16px; /* Consistent with node font size */
+  }
+}
+
+/* Improve contrast for better accessibility */
+@media (prefers-contrast: high) {
+  .node-content:focus {
+    border-bottom: 2px solid #000;
+  }
+}

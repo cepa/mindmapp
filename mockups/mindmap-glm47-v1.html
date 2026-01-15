@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple MindMap</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --dot-color: #d1d5db;
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --danger-color: #ef4444;
+            --node-bg: #ffffff;
+            --node-border: #e5e7eb;
+            --text-color: #1f2937;
+            --line-color: #9ca3af;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none; /* Prevent text selection during dragging */
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+        }
+
+        /* Toolbar */
+        .toolbar {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.2s;
+            background-color: #f3f4f6;
+            color: var(--text-color);
+        }
+
+        .btn:hover {
+            background-color: #e5e7eb;
+        }
+
+        .btn.primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn.primary:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .btn.danger {
+            background-color: var(--danger-color);
+            color: white;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Canvas Area */
+        #mindmap-container {
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+            position: relative;
+            background-image: radial-gradient(var(--dot-color) 1px, transparent 1px);
+            background-size: 20px 20px;
+            transform-origin: 0 0;
+        }
+
+        #mindmap-container.panning {
+            cursor: grabbing;
+        }
+
+        /* SVG Layer for Lines */
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            pointer-events: none; /* Let clicks pass through to background/nodes */
+            z-index: 1;
+        }
+
+        /* Connections */
+        path.connection {
+            fill: none;
+            stroke: var(--line-color);
+            stroke-width: 2px;
+            stroke-linecap: round;
+        }
+
+        /* Nodes */
+        .node {
+            position: absolute;
+            min-width: 100px;
+            padding: 10px 15px;
+            background: var(--node-bg);
+            border: 2px solid var(--node-border);
+            border-radius: 8px;
+            color: var(--text-color);
+            font-size: 14px;
+            text-align: center;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            z-index: 2;
+            transition: box-shadow 0.2s, transform 0.1s;
+        }
+
+        .node:hover {
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .node.selected {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+            z-index: 3;
+        }
+
+        .node input {
+            width: 100%;
+            border: none;
+            outline: none;
+            font-family: inherit;
+            font-size: inherit;
+            text-align: center;
+            background: transparent;
+            padding: 0;
+            margin: 0;
+        }
+
+        /* Help Toast */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+
+        .toast.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <button class="btn primary" id="btn-add-child" disabled>Add Child</button>
+        <button class="btn danger" id="btn-delete" disabled>Delete Node</button>
+        <button class="btn" id="btn-center">Center View</button>
+        <button class="btn" id="btn-clear">Clear All</button>
+    </div>
+
+    <!-- Canvas Container -->
+    <div id="mindmap-container">
+        <svg id="connections"></svg>
+        <div id="nodes-layer"></div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast">Action feedback</div>
+
+    <script>
+        /**
+         * Simple MindMap Application
+         * Handles Node creation, dragging, connecting, and canvas panning/zooming.
+         */
+        
+        // --- State Management ---
+        const state = {
+            nodes: [], // Array of node objects: { id, text, x, y, parentId }
+            selectedNodeId: null,
+            scale: 1,
+            panX: 0,
+            panY: 0,
+            isPanning: false,
+            isDraggingNode: false,
+            lastMouseX: 0,
+            lastMouseY: 0,
+            draggedNodeId: null
+        };
+
+        // --- DOM Elements ---
+        const container = document.getElementById('mindmap-container');
+        const nodesLayer = document.getElementById('nodes-layer');
+        const svgLayer = document.getElementById('connections');
+        const btnAddChild = document.getElementById('btn-add-child');
+        const btnDelete = document.getElementById('btn-delete');
+        const btnCenter = document.getElementById('btn-center');
+        const btnClear = document.getElementById('btn-clear');
+        const toastEl = document.getElementById('toast');
+
+        // --- Helper Functions ---
+        
+        function generateId() {
+            return 'node-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+        }
+
+        function showToast(message) {
+            toastEl.textContent = message;
+            toastEl.classList.add('show');
+            setTimeout(() => {
+                toastEl.classList.remove('show');
+            }, 2000);
+        }
+
+        // --- Rendering ---
+
+        function updateTransform() {
+            container.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+        }
+
+        function renderLines() {
+            // Clear existing lines
+            svgLayer.innerHTML = '';
+
+            state.nodes.forEach(node => {
+                if (node.parentId) {
+                    const parent = state.nodes.find(n => n.id === node.parentId);
+                    if (parent) {
+                        drawConnection(parent, node);
+                    }
+                }
+            });
+        }
+
+        function drawConnection(parent, child) {
+            // Calculate center points
+            const pX = parent.x + parent.width / 2;
+            const pY = parent.y + parent.height / 2;
+            const cX = child.x + child.width / 2;
+            const cY = child.y + child.height / 2;
+
+            // Create Bezier Curve path
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            
+            // Control points for smooth curve
+            const deltaY = cY - pY;
+            const controlY1 = pY + deltaY * 0.5;
+            const controlY2 = cY - deltaY * 0.5;
+
+            const d = `M ${pX} ${pY} C ${pX} ${controlY1}, ${cX} ${controlY2}, ${cX} ${cY}`;
+
+            path.setAttribute("d", d);
+            path.setAttribute("class", "connection");
+            svgLayer.appendChild(path);
+        }
+
+        function createNodeElement(nodeData) {
+            const div = document.createElement('div');
+            div.className = 'node';
+            div.id = nodeData.id;
+            div.style.left = nodeData.x + 'px';
+            div.style.top = nodeData.y + 'px';
+            
+            const input = document.createElement('input');
+            input.value = nodeData.text;
+            input.addEventListener('mousedown', (e) => e.stopPropagation()); // Prevent drag start on input focus
+            
+            // Save on blur or enter
+            input.addEventListener('blur', () => saveNodeText(nodeData.id, input.value));
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    input.blur();
+                    selectNode(nodeData.id); // Re-select to ensure focus state is clean
+                }
+            });
+
+            // Double click to edit
+            div.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                input.focus();
+                input.select();
+            });
+
+            // Single click to select
+            div.addEventListener('mousedown', (e) => {
+                e.stopPropagation(); // Don't trigger canvas pan
+                startDragNode(e, nodeData.id);
+                selectNode(nodeData.id);
+            });
+
+            div.appendChild(input);
+            return div;
+        }
+
+        function renderNode(node) {
+            const existing = document.getElementById(node.id);
+            if (existing) {
+                // Update position
+                existing.style.left = node.x + 'px';
+                existing.style.top = node.y + 'px';
+                // Update class selection
+                if (node.id === state.selectedNodeId) {
+                    existing.classList.add('selected');
+                } else {
+                    existing.classList.remove('selected');
+                }
+                // Update size cache (needed for line drawing)
+                node.width = existing.offsetWidth;
+                node.height = existing.offsetHeight;
+            } else {
+                // Create new
+                const el = createNodeElement(node);
+                nodesLayer.appendChild(el);
+                // Initialize size after append
+                node.width = el.offsetWidth;
+                node.height = el.offsetHeight;
+            }
+        }
+
+        function renderAll() {
+            state.nodes.forEach(renderNode);
+            renderLines();
+            updateToolbar();
+        }
+
+        function updateToolbar() {
+            const hasSelection = state.selectedNodeId !== null;
+            btnAddChild.disabled = !hasSelection;
+            btnDelete.disabled = !hasSelection;
+        }
+
+        // --- Logic ---
+
+        function addNode(x, y, parentId = null, text = "New Idea") {
+            const newNode = {
+                id: generateId(),
+                text: text,
+                x: x,
+                y: y,
+                parentId: parentId,
+                width: 100, // Estimated, updated on render
+                height: 40
+            };
+            state.nodes.push(newNode);
+            renderAll();
+            selectNode(newNode.id);
+            return newNode;
+        }
+
+        function saveNodeText(id, text) {
+            const node = state.nodes.find(n => n.id === id);
+            if (node) {
+                node.text = text;
+                // Size might change, redraw lines
+                renderAll(); 
+            }
+        }
+
+        function selectNode(id) {
+            state.selectedNodeId = id;
+            renderAll();
+        }
+
+        function deleteSelectedNode() {
+            if (!state.selectedNodeId) return;
+
+            const toDelete = [state.selectedNodeId];
+            
+            // Find all descendants recursively
+            let addedNew = true;
+            while (addedNew) {
+                addedNew = false;
+                state.nodes.forEach(node => {
+                    if (toDelete.includes(node.parentId) && !toDelete.includes(node.id)) {
+                        toDelete.push(node.id);
+                        addedNew = true;
+                    }
+                });
+            }
+
+            state.nodes = state.nodes.filter(n => !toDelete.includes(n.id));
+            state.selectedNodeId = null;
+            renderAll();
+            showToast("Deleted " + toDelete.length + " node(s)");
+        }
+
+        function addChildToSelected() {
+            if (!state.selectedNodeId) return;
+            const parent = state.nodes.find(n => n.id === state.selectedNodeId);
+            if (!parent) return;
+
+            // Position new node slightly below and to the right of parent
+            const newX = parent.x + 50;
+            const newY = parent.y + 80;
+
+            addNode(newX, newY, parent.id, "Child Node");
+        }
+
+        // --- Interactions (Pan, Zoom, Drag) ---
+
+        container.addEventListener('mousedown', (e) => {
+            // If clicking on background
+            if (e.target === container || e.target === svgLayer) {
+                state.isPanning = true;
+                state.lastMouseX = e.clientX;
+                state.lastMouseY = e.clientY;
+                container.classList.add('panning');
+                
+                // Deselect node if clicking empty space
+                state.selectedNodeId = null;
+                renderAll();
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (state.isPanning) {
+                const deltaX = e.clientX - state.lastMouseX;
+                const deltaY = e.clientY - state.lastMouseY;
+                
+                state.panX += deltaX;
+                state.panY += deltaY;
+                
+                state.lastMouseX = e.clientX;
+                state.lastMouseY = e.clientY;
+                
+                updateTransform();
+            } else if (state.isDraggingNode && state.draggedNodeId) {
+                const node = state.nodes.find(n => n.id === state.draggedNodeId);
+                if (node) {
+                    // Adjust delta by scale
+                    const deltaX = (e.clientX - state.lastMouseX) / state.scale;
+                    const deltaY = (e.clientY - state.lastMouseY) / state.scale;
+
+                    node.x += deltaX;
+                    node.y += deltaY;
+
+                    state.lastMouseX = e.clientX;
+                    state.lastMouseY = e.clientY;
+
+                    renderAll(); // Inefficient re-render, but fine for simple app
+                }
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            state.isPanning = false;
+            state.isDraggingNode = false;
+            state.draggedNodeId = null;
+            container.classList.remove('panning');
+        });
+
+        function startDragNode(e, id) {
+            state.isDraggingNode = true;
+            state.draggedNodeId = id;
+            state.lastMouseX = e.clientX;
+            state.lastMouseY = e.clientY;
+        }
+
+        container.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const scaleSensitivity = 0.001;
+            const newScale = state.scale - (e.deltaY * scaleSensitivity);
+            
+            // Clamp scale
+            state.scale = Math.min(Math.max(0.5, newScale), 3);
+            updateTransform();
+        }, { passive: false });
+
+        // --- Event Listeners: Toolbar ---
+
+        btnAddChild.addEventListener('click', addChildToSelected);
+        btnDelete.addEventListener('click', deleteSelectedNode);
+        
+        btnCenter.addEventListener('click', () => {
+            // Reset pan and zoom
+            state.scale = 1;
+            state.panX = 0;
+            state.panY = 0;
+            updateTransform();
+            showToast("View centered");
+        });
+
+        btnClear.addEventListener('click', () => {
+            if(confirm("Are you sure you want to clear the entire mind map?")) {
+                state.nodes = [];
+                state.selectedNodeId = null;
+                renderAll();
+                showToast("Mind map cleared");
+            }
+        });
+
+        // --- Initialization ---
+        
+        function init() {
+            // Create a root node in the center
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            
+            // Start roughly in middle of screen
+            addNode(viewportWidth / 2 - 75, viewportHeight / 2 - 25, null, "Central Topic");
+            
+            showToast("Double-click to edit text. Drag to move.");
+        }
+
+        // Start app
+        init();
+
+    </script>
+</body>
+</html>

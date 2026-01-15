@@ -1,0 +1,35 @@
+  <div #mindmapContainer class="mindmap-container" (mousedown)="appState.selectedNodeId.set(null)">
+  <svg #svgLayer class="connections">
+    @for (conn of appState.getConnections(); track conn.child.id) {
+      <path
+        [attr.d]="getConnectionPath(conn.parent, conn.child)"
+        class="connection"
+      ></path>
+    }
+  </svg>
+  <div #nodesLayer class="nodes-layer">
+    @for (node of appState.nodes(); track node.id) {
+      <div
+        class="node"
+        [attr.data-node-id]="node.id"
+        [class.root-node]="node.parentId === null"
+        [class.selected]="appState.selectedNodeId() === node.id"
+        [style.left.px]="node.x"
+        [style.top.px]="node.y"
+        (mousedown)="startDragNode($event, node.id); selectNode(node.id)"
+        (touchstart)="startDragNode($event, node.id); selectNode(node.id)"
+        (touchend)="handleTouchEnd($event, node.id)"
+      >
+        <div
+          class="node-content"
+          [attr.contenteditable]="'true'"
+          (input)="onContentEdit($event, node.id)"
+          (blur)="finishEditNode(node.id)"
+          (keydown)="handleEditKeyDown($event, node.id)"
+          (mousedown)="preventDrag($event); selectNode(node.id)"
+          (touchstart)="preventDrag($event); selectNode(node.id)"
+        >{{ node.text }}</div>
+      </div>
+    }
+  </div>
+</div>

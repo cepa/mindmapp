@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Simple Mind‑Map</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+    :root{
+        --node-bg:#fff;
+        --node-border:#4a90e2;
+        --node-shadow:rgba(0,0,0,.2);
+        --add-btn:#28a745;
+        --del-btn:#dc3545;
+        --toolbar-bg:#333;
+        --toolbar-fg:#fff;
+    }
+    html,body{margin:0;padding:0;height:100%;font-family:Arial,Helvetica,sans-serif;}
+    #toolbar{
+        position:fixed;top:0;left:0;right:0;
+        background:var(--toolbar-bg);
+        color:var(--toolbar-fg);
+        padding:6px 10px;
+        z-index:1002;
+        display:flex;
+        gap:10px;
+        align-items:center;
+    }
+    #toolbar button{
+        background:#4a90e2;
+        border:none;
+        color:#fff;
+        padding:6px 12px;
+        border-radius:4px;
+        cursor:pointer;
+        font-size:14px;
+    }
+    #toolbar button:hover{
+        background:#357ABD;
+    }
+    #mindmap{
+        position:absolute;
+        top:40px;left:0;right:0;bottom:0;
+        overflow:hidden;
+        background:#f6f8fa;
+    }
+    #connections{
+        position:absolute;
+        top:0;left:0;width:100%;height:100%;
+        pointer-events:none;               /* never block mouse actions */
+    }
+    .node{
+        position:absolute;
+        min-width:120px;
+        min-height:50px;
+        max-width:300px;
+        background:var(--node-bg);
+        border:2px solid var(--node-border);
+        border-radius:8px;
+        box-shadow:2px 2px 6px var(--node-shadow);
+        padding:8px 8px 8px 12px;
+        cursor:move;
+        user-select:none;                 /* avoid text selection while dragging */
+    }
+    .node .content{
+        outline:none;
+        min-height:1.2em;
+    }
+    .node .content:focus{
+        border-bottom:1px dotted var(--node-border);
+    }
+    .node .buttons{
+        position:absolute;
+        top:-12px;right:-12px;
+        display:flex;
+        gap:3px;
+    }
+    .node .button{
+        width:20px;height:20px;
+        line-height:20px;
+        text-align:center;
+        border-radius:50%;
+        font-size:14px;
+        color:#fff;
+        cursor:pointer;
+        user-select:none;
+    }
+    .node .button.add{background:var(--add-btn);}
+    .node .button.del{background:var(--del-btn);}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+    <button id="add-root">Add Root Node</button>
+    <button id="clear-all">Clear All</button>
+    <span style="margin-left:auto;">Simple mind‑map – click “+” to add children, drag nodes to move them.</span>
+</div>
+
+<div id="mindmap">
+    <svg id="connections"></svg>
+</div>
+
+<script>
+/* ------------------------------------------------------------------
+   Simple Mind‑Map – pure HTML / CSS / JavaScript in one file
+   ------------------------------------------------------------------ */
+
+(() => {
+    const mindmap   = document.getElementById('mindmap');
+    const svg       = document.getElementById('connections');
+
+    let nodes = {};                 // id → node object
+    let nodeIdCounter = 0;          // simple incremental id generator
+    let draggingNode = null;        // node currently being moved
+    let dragOffsetX = 0, dragOffsetY = 0;
+
+    /* ---------- utilities ---------- */
+    const genId = () => ++nodeIdCounter;
+
+    const getNodeCenter = (node) => {
+        // Coordinates relative to the #mindmap container (which is also the SVG origin)
+        const el = node.element;
+        const cx = node.x + el.offsetWidth/2;
+        const cy = node.y + el.offsetHeight/2;
+        return {x:cx, y:cy};
+    };
+
+    const updateLine = (childNode) => {
+        if (!childNode.line) return;
+        const parentNode = nodes[childNode.parentId];
+        if (!parentNode) return;
+        const p = getNodeCenter(parentNode);
+        const c = getNodeCenter(childNode);
+        childNode.line.setAttribute('x1', p.x);
+        childNode.line.setAttribute('y1', p.y);
+        childNode.line.setAttribute('x2', c.x);
+        childNode.line.setAttribute('y2', c.y);
+    };
+
+    const updateAllLines = () => {
+        for (const id in nodes) {
+            const n = nodes[id];
+            if (n.parentId !== null && n.line) {
+                updateLine(n);
+            }
+        }
+    };
+
+    /* ---------- create DOM elements ---------- */
+    const createNodeElement = (node) => {
+        const el = document.createElement('div');
+        el.className = 'node';
+
+        // ----- content (editable) -----
+        const content = document.createElement('div');
+        content.className = 'content';
+        content.contentEditable = 'true';
+        content.textContent = node.text;
+        content.addEventListener('input', () => {
+            node.text = content.textContent;
+        });
+        el.appendChild(content);
+
+        // ----- control buttons -----
+        const btnBox = document.createElement('div');
+        btnBox.className = 'buttons';
+
+        const addBtn = document.createElement('div');
+        addBtn.className = 'button add';
+        addBtn.title = 'Add child';
+        addBtn.textContent = '+';
+        addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();          // prevent dragging start
+            addChild(node);
+        });
+        btnBox.appendChild(addBtn);
+
+        const delBtn = document.createElement('div');
+        delBtn.className = 'button del';
+        delBtn.title = 'Delete node';
+        delBtn.textContent = '×';
+        delBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteNode(node);
+        });
+        btnBox.appendChild(delBtn);
+
+        el.appendChild(btnBox);
+
+        // ----- dragging handling -----
+        el.addEventListener('pointerdown', (e) => {
+            // ignore clicks on buttons or editable text
+            if (e.target.closest('.button')) return;
+            if (e.target.classList.contains('content')) return;
+            startDrag(node, e);
+        });
+
+        return el;
+    };
+
+    const createLineElement = (parentNode, childNode) => {
+        const svgns = 'http://www.w3.org/2000/svg';
+        const line = document.createElementNS(svgns, 'line');
+        line.setAttribute('stroke', '#999');
+        line.setAttribute('stroke-width', '2');
+        line.setAttribute('fill', 'none');
+        // initialise coordinates – they will be corrected in updateAllLines()
+        const p = getNodeCenter(parentNode);
+        const c = getNodeCenter(childNode);
+        line.setAttribute('x1', p.x);
+        line.setAttribute('y1', p.y);
+        line.setAttribute('x2', c.x);
+        line.setAttribute('y2', c.y);
+        svg.appendChild(line);
+        return line;
+    };
+
+    /* ---------- node management ---------- */
+    const createNode = ({parentId = null, x = 0, y = 0, text = 'Node'} = {}) => {
+        const id = genId();
+        const node = {
+            id,
+            parentId,
+            x,
+            y,
+            text,
+            element: null,
+            line: null,
+            children: []
+        };
+        node.element = createNodeElement(node);
+        node.element.style.left = `${x}px`;
+        node.element.style.top  = `${y}px`;
+        mindmap.appendChild(node.element);
+
+        if (parentId !== null) {
+            const parent = nodes[parentId];
+            node.line = createLineElement(parent, node);
+            parent.children.push(node);
+        }
+        nodes[id] = node;
+        updateAllLines();
+        return node;
+    };
+
+    const addChild = (parentNode) => {
+        // position child a bit to the right and spaced vertically
+        const offsetX = 200;
+        const offsetY = 0;
+        const childIndex = parentNode.children.length;
+        const newX = parentNode.x + offsetX;
+        const newY = parentNode.y + childIndex * 80 + offsetY;
+        createNode({parentId: parentNode.id, x:newX, y:newY, text:'New node'});
+    };
+
+    const deleteNode = (node) => {
+        // recursive removal of descendants
+        node.children.forEach(child => deleteNode(child));
+
+        // remove line (if any)
+        if (node.line) {
+            svg.removeChild(node.line);
+        }
+
+        // detach element
+        mindmap.removeChild(node.element);
+
+        // clean parent reference
+        if (node.parentId !== null) {
+            const parent = nodes[node.parentId];
+            if (parent) {
+                parent.children = parent.children.filter(c => c.id !== node.id);
+            }
+        }
+
+        // delete from map
+        delete nodes[node.id];
+    };
+
+    const clearAll = () => {
+        // Remove every node and line, reset counters
+        for (const id in nodes) {
+            const nd = nodes[id];
+            if (nd.line) svg.removeChild(nd.line);
+            mindmap.removeChild(nd.element);
+        }
+        nodes = {};
+        nodeIdCounter = 0;
+    };
+
+    /* ---------- dragging implementation ---------- */
+    const startDrag = (node, e) => {
+        draggingNode = node;
+        const rect = mindmap.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        dragOffsetX = mouseX - node.x;
+        dragOffsetY = mouseY - node.y;
+        node.element.style.zIndex = 1000;          // bring to front while moving
+        node.element.setPointerCapture(e.pointerId);
+        e.preventDefault();
+    };
+
+    const onPointerMove = (e) => {
+        if (!draggingNode) return;
+        const rect = mindmap.getBoundingClientRect();
+        const newX = e.clientX - rect.left - dragOffsetX;
+        const newY = e.clientY - rect.top - dragOffsetY;
+        draggingNode.x = newX;
+        draggingNode.y = newY;
+        draggingNode.element.style.left = `${newX}px`;
+        draggingNode.element.style.top  = `${newY}px`;
+        updateAllLines();    // simple: recompute every line
+        e.preventDefault();
+    };
+
+    const onPointerUp = (e) => {
+        if (!draggingNode) return;
+        draggingNode.element.releasePointerCapture(e.pointerId);
+        draggingNode.element.style.zIndex = '';
+        draggingNode = null;
+    };
+
+    // Global listeners for movement
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onPointerUp);
+    document.addEventListener('pointercancel', onPointerUp);
+
+    /* ---------- UI buttons ---------- */
+    document.getElementById('add-root').addEventListener('click', () => {
+        // allow only one root at a time (keep it simple)
+        const hasRoot = Object.values(nodes).some(n => n.parentId === null);
+        if (hasRoot) {
+            alert('A root node already exists. Delete it first or clear all.');
+            return;
+        }
+        const rect = mindmap.getBoundingClientRect();
+        const x = rect.width/2 - 80;   // roughly centre (node width ≈ 160)
+        const y = rect.height/2 - 30;  // roughly centre (node height ≈ 60)
+        createNode({parentId:null, x, y, text:'Root'});
+    });
+
+    document.getElementById('clear-all').addEventListener('click', () => {
+        if (confirm('Delete everything?')) clearAll();
+    });
+
+    // Update lines when the window is resized (container size changes)
+    window.addEventListener('resize', updateAllLines);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mind Map Application</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            overflow: hidden;
+            background-color: #f5f5f5;
+        }
+        
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            cursor: grab;
+        }
+        
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+        
+        #mindmap-canvas {
+            display: block;
+            background-color: #ffffff;
+        }
+        
+        #zoom-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        #zoom-indicator.visible {
+            opacity: 1;
+        }
+        
+        #help-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            transition: transform 0.2s, box-shadow 0.2s;
+            z-index: 100;
+        }
+        
+        #help-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        
+        #help-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        #help-overlay.visible {
+            display: flex;
+        }
+        
+        #help-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        }
+        
+        #help-content h1 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 24px;
+        }
+        
+        #help-search {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 20px;
+            transition: border-color 0.2s;
+        }
+        
+        #help-search:focus {
+            outline: none;
+            border-color: #4285f4;
+        }
+        
+        .help-section {
+            margin-bottom: 24px;
+        }
+        
+        .help-section h2 {
+            color: #4285f4;
+            font-size: 18px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .shortcut-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .shortcut-item:last-child {
+            border-bottom: none;
+        }
+        
+        .shortcut-description {
+            color: #555;
+        }
+        
+        .shortcut-keys {
+            display: flex;
+            gap: 6px;
+        }
+        
+        .key {
+            background: #f0f0f0;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 0 #ccc;
+        }
+        
+        #help-close {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            font-size: 30px;
+            color: white;
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        #context-menu {
+            position: fixed;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            padding: 8px 0;
+            min-width: 180px;
+            display: none;
+            z-index: 500;
+        }
+        
+        #context-menu.visible {
+            display: block;
+        }
+        
+        .context-menu-item {
+            padding: 10px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+        
+        .context-menu-item:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .context-menu-item span:last-child {
+            color: #888;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="mindmap-canvas"></canvas>
+    </div>
+    
+    <div id="zoom-indicator">100%</div>
+    
+    <button id="help-button" title="Help">?</button>
+    
+    <div id="help-overlay">
+        <button id="help-close">&times;</button>
+        <div id="help-content">
+            <h1>Keyboard Shortcuts</h1>
+            <input type="text" id="help-search" placeholder="Search shortcuts...">
+            <div id="shortcuts-list">
+                <div class="help-section">
+                    <h2>Navigation</h2>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Navigate between nodes</span>
+                        <div class="shortcut-keys">
+                            <span class="key">Arrow Keys</span>
+                        </div>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Pan canvas</span>
+                        <div class="shortcut-keys">
+                            <span class="key">Space</span>
+                            <span class="key">+ Drag</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="help-section">
+                    <h2>Editing</h2>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Create new child node</span>
+                        <div class="shortcut-keys">
+                            <span class="key">Enter</span>
+                        </div>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Create sibling node</span>
+                        <div class="shortcut-keys">
+                            <span class="key">Shift</span>
+                            <span class="key">+ Enter</span>
+                        </div>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Edit selected node</span>
+                        <div class="shortcut-keys">
+                            <span class="key">F2</span>
+                        </div>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Delete selected node</span>
+                        <div class="shortcut-keys">
+                            <span class="key">Delete</span>
+                        </div>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Rename root node</span>
+                        <div class="shortcut-keys">
+                            <span class="key">F2</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="help-section">
+                    <h2>Clipboard</h2>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Cut selected node</span>
+                        <div class="shortcut-keys">
+                            <span class="key">Ctrl</span>
+                            <span class="key">X</span>
+                        </div>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Copy selected node</span>
+                        <div class="shortcut-keys">
+                            <span class="key">Ctrl</span>
+                            <span class="key">C</span>
+                        </div>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Paste as child</span>
+                        <div class="shortcut-keys">
+                            <span class="key">Ctrl</span>
+                            <span class="key">V</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="help-section">
+                    <h2>History</h2>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Undo last action</span>
+                        <div class="shortcut-keys">
+                            <span class="key">Ctrl</span>
+                            <span class="key">Z</span>
+                        </div>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Redo undone action</span>
+                        <div class="shortcut-keys">
+                            <span class="key">Ctrl</span>
+                            <span class="key">Y</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="help-section">
+                    <h2>Help</h2>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Show/hide help</span>
+                        <div class="shortcut-keys">
+                            <span class="key">?</span>
+                        </div>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-description">Dismiss help overlay</span>
+                        <div class="shortcut-keys">
+                            <span class="key">Esc</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="context-menu">
+        <div class="context-menu-item" data-action="add-child">
+            <span>Add Child</span>
+            <span>Enter</span>
+        </div>
+        <div class="context-menu-item" data-action="add-sibling">
+            <span>Add Sibling</span>
+            <span>Shift+Enter</span>
+        </div>
+        <div class="context-menu-item" data-action="edit">
+            <span>Edit</span>
+            <span>F2</span>
+        </div>
+        <div class="context-menu-item" data-action="cut">
+            <span>Cut</span>
+            <span>Ctrl+X</span>
+        </div>
+        <div class="context-menu-item" data-action="copy">
+            <span>Copy</span>
+            <span>Ctrl+C</span>
+        </div>
+        <div class="context-menu-item" data-action="paste">
+            <span>Paste</span>
+            <span>Ctrl+V</span>
+        </div>
+        <div class="context-menu-item" data-action="delete">
+            <span>Delete</span>
+            <span>Del</span>
+        </div>
+        <div class="context-menu-item" data-action="change-color">
+            <span>Change Color</span>
+            <span>→</span>
+        </div>
+    </div>
+    
+    <script>
+        // Mind Map Application
+        class MindMap {
+            constructor() {
+                this.canvas = document.getElementById('mindmap-canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.container = document.getElementById('canvas-container');
+                this.zoomIndicator = document.getElementById('zoom-indicator');
+                this.helpButton = document.getElementById('help-button');
+                this.helpOverlay = document.getElementById('help-overlay');
+                this.helpClose = document.getElementById('help-close');
+                this.helpSearch = document.getElementById('help-search');
+                this.contextMenu = document.getElementById('context-menu');
+                
+                // Canvas state
+                this.scale = 1;
+                this.offsetX = 0;
+                this.offsetY = 0;
+                this.isPanning = false;
+                this.lastPanX = 0;
+                this.lastPanY = 0;
+                this.isSpacePressed = false;
+                
+                // Mind map data
+                this.nodes = new Map();
+                this.selectedNode = null;
+                this.clipboard = null;
+                this.nodeIdCounter = 0;
+                
+                // Undo/Redo stacks
+                this.undoStack = [];
+                this.redoStack = [];
+                this.maxUndoSize = 50;
+                this.isUndoRedo = false;
+                
+                // Colors
+                this.colors = ['#ffebee', '#fff3e0', '#e8f5e9', '#e3f2fd', '#f3e5f5', '#fffde7', '#fce4ec'];
+                this.currentColorIndex = 0;
+                
+                // Node dimensions
+                this.nodeWidth = 120;
+                this.nodeHeight = 40;
+                this.nodePadding = 15;
+                this.horizontalSpacing = 60;
+                this.verticalSpacing = 40;
+                
+                // Editing state
+                this.editingNode = null;
+                this.editInput = null;
+                
+                // Initialize
+                this.initCanvas();
+                this.initEventListeners();
+                this.createRootNode();
+                this.render();
+            }
+            
+            initCanvas() {
+                this.resizeCanvas();
+                window.addEventListener('resize', () => this.resizeCanvas());
+            }
+            
+            resizeCanvas() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+                this.render();
+            }
+            
+            initEventListeners() {
+                // Mouse events for canvas
+                this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+                this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+                this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+                this.canvas.addEventListener('wheel', (e) => this.handleWheel(e));
+                this.canvas.addEventListener('dblclick', (e) => this.handleDoubleClick(e));
+                
+                // Context menu
+                this.canvas.addEventListener('contextmenu', (e) => this.handleContextMenu(e));
+                this.contextMenu.addEventListener('click', (e) => this.handleContextMenuClick(e));
+                document.addEventListener('click', () => this.hideContextMenu());
+                
+                // Keyboard events
+                document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+                document.addEventListener('keyup', (e) => this.handleKeyUp(e));
+                
+                // Help button
+                this.helpButton.addEventListener('click', () => this.toggleHelp());
+                this.helpClose.addEventListener('click', () => this.hideHelp());
+                this.helpSearch.addEventListener('input', () => this.filterHelp());
+                
+                // Help overlay click
+                this.helpOverlay.addEventListener('click', (e) => {
+                    if (e.target === this.helpOverlay) this.hideHelp();
+                });
+            }
+            
+            createRootNode() {
+                const root = {
+                    id: this.generateId(),
+                    text: 'Central Topic',
+                    x: 0,
+                    y: 0,
+                    parentId: null,
+                    children: [],
+                    color: '#e3f2fd'
+                };
+                this.nodes.set(root.id, root);
+                this.selectedNode = root;
+                this.centerOnNode(root);
+            }
+            
+            generateId() {
+                return `node_${++this.nodeIdCounter}`;
+            }
+            
+            centerOnNode(node) {
+                this.offsetX = -node.x * this.scale + this.canvas.width / 2 - (this.nodeWidth + this.nodePadding * 2) / 2 * this.scale;
+                this.offsetY = -node.y * this.scale + this.canvas.height / 2 - (this.nodeHeight + this.nodePadding * 2) / 2 * this.scale;
+            }
+            
+            handleMouseDown(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left - this.offsetX) / this.scale;
+                const y = (e.clientY - rect.top - this.offsetY) / this.scale;
+                
+                const clickedNode = this.findNodeAtPoint(x, y);
+                
+                if (clickedNode) {
+                    this.selectNode(clickedNode);
+                } else {
+                    // Start panning
+                    if (e.button === 0) {
+                        this.isPanning = true;
+                        this.lastPanX = e.clientX;
+                        this.lastPanY = e.clientY;
+                    }
+                }
+            }
+            
+            handleMouseMove(e) {
+                if (this.isPanning) {
+                    const dx = e.clientX - this.lastPanX;
+                    const dy = e.clientY - this.lastPanY;
+                    this.offsetX += dx;
+                    this.offsetY += dy;
+                    this.lastPanX = e.clientX;
+                    this.lastPanY = e.clientY;
+                    this.render();
+                }
+            }
+            
+            handleMouseUp(e) {
+                this.isPanning = false;
+            }
+            
+            handleWheel(e) {
+                e.preventDefault();
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                // Calculate zoom
+                const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+                const newScale = Math.min(3, Math.max(0.3, this.scale * zoomFactor));
+                
+                // Adjust offset to zoom toward mouse position
+                this.offsetX = mouseX - (mouseX - this.offsetX) * (newScale / this.scale);
+                this.offsetY = mouseY - (mouseY - this.offsetY) * (newScale / this.scale);
+                this.scale = newScale;
+                
+                // Show zoom indicator
+                this.showZoomIndicator();
+                this.render();
+            }
+            
+            handleDoubleClick(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left - this.offsetX) / this.scale;
+                const y = (e.clientY - rect.top - this.offsetY) / this.scale;
+                
+                const clickedNode = this.findNodeAtPoint(x, y);
+                if (clickedNode) {
+                    this.startEditing(clickedNode);
+                } else {
+                    // Create new root node on double-click on empty space
+                    const newRoot = {
+                        id: this.generateId(),
+                        text: 'New Topic',
+                        x: x,
+                        y: y,
+                        parentId: null,
+                        children: [],
+                        color: '#e3f2fd'
+                    };
+                    this.nodes.set(newRoot.id, newRoot);
+                    this.selectNode(newRoot);
+                    this.saveState('create');
+                    this.render();
+                }
+            }
+            
+            handleContextMenu(e) {
+                e.preventDefault();
+                
+                const rect = this.canvas.getBoundingClientRect();
+                const x = (e.clientX - rect.left - this.offsetX) / this.scale;
+                const y = (e.clientY - rect.top - this.offsetY) / this.scale;
+                
+                const clickedNode = this.findNodeAtPoint(x, y);
+                if (clickedNode) {
+                    this.selectNode(clickedNode);
+                    this.showContextMenu(e.clientX, e.clientY);
+                }
+            }
+            
+            handleContextMenuClick(e) {
+                const action = e.target.closest('.context-menu-item')?.dataset.action;
+                if (!action || !this.selectedNode) return;
+                
+                this.hideContextMenu();
+                
+                switch (action) {
+                    case 'add-child':
+                        this.addChildNode();
+                        break;
+                    case 'add-sibling':
+                        this.addSiblingNode();
+                        break;
+                    case 'edit':
+                        this.startEditing(this.selectedNode);
+                        break;
+                    case 'cut':
+                        this.cutNode();
+                        break;
+                    case 'copy':
+                        this.copyNode();
+                        break;
+                    case 'paste':
+                        this.pasteNode();
+                        break;
+                    case 'delete':
+                        this.deleteNode();
+                        break;
+                    case 'change-color':
+                        this.cycleNodeColor();
+                        break;
+                }
+            }
+            
+            showContextMenu(x, y) {
+                this.contextMenu.style.left = `${x}px`;
+                this.contextMenu.style.top = `${y}px`;
+                this.contextMenu.classList.add('visible');
+            }
+            
+            hideContextMenu() {
+                this.contextMenu.classList.remove('visible');
+            }
+            
+            handleKeyDown(e) {
+                // Don't handle keyboard if editing text
+                if (this.editingNode) {
+                    if (e.key === 'Escape') {
+                        this.stopEditing(false);
+                    } else if (e.key === 'Enter' && !e.shiftKey) {
+                        this.stopEditing(true);
+                    }
+                    return;
+                }
+                
+                // Don't handle if help is open
+                if (this.helpOverlay.classList.contains('visible')) {
+                    if (e.key === 'Escape') {
+                        this.hideHelp();
+                    }
+                    return;
+                }
+                
+                // Handle keyboard shortcuts
+                if (e.ctrlKey || e.metaKey) {
+                    switch (e.key.toLowerCase()) {
+                        case 'z':
+                            e.preventDefault();
+                            if (e.shiftKey) {
+                                this.redo();
+                            } else {
+                                this.undo();
+                            }
+                            break;
+                        case 'y':
+                            e.preventDefault();
+                            this.redo();
+                            break;
+                        case 'x':
+                            e.preventDefault();
+                            this.cutNode();
+                            break;
+                        case 'c':
+                            e.preventDefault();
+                            this.copyNode();
+                            break;
+                        case 'v':
+                            e.preventDefault();
+                            this.pasteNode();
+                            break;
+                    }
+                } else {
+                    switch (e.key) {
+                        case 'ArrowUp':
+                        case 'ArrowDown':
+                        case 'ArrowLeft':
+                        case 'ArrowRight':
+                            e.preventDefault();
+                            this.navigateNodes(e.key);
+                            break;
+                        case 'Enter':
+                            e.preventDefault();
+                            if (e.shiftKey) {
+                                this.addSiblingNode();
+                            } else {
+                                this.addChildNode();
+                            }
+                            break;
+                        case 'Delete':
+                        case 'Backspace':
+                            if (this.selectedNode && this.selectedNode.parentId !== null) {
+                                e.preventDefault();
+                                this.deleteNode();
+                            }
+                            break;
+                        case 'F2':
+                            e.preventDefault();
+                            if (this.selectedNode) {
+                                this.startEditing(this.selectedNode);
+                            }
+                            break;
+                        case '?':
+                            e.preventDefault();
+                            this.toggleHelp();
+                            break;
+                        case ' ':
+                            e.preventDefault();
+                            this.isSpacePressed = true;
+                            this.container.style.cursor = 'grabbing';
+                            break;
+                    }
+                }
+            }
+            
+            handleKeyUp(e) {
+                if (e.key === ' ') {
+                    this.isSpacePressed = false;
+                    this.container.style.cursor = 'grab';
+                }
+            }
+            
+            navigateNodes(direction) {
+                if (!this.selectedNode) return;
+                
+                let targetNode = null;
+                
+                switch (direction) {
+                    case 'ArrowUp':
+                        // Navigate to previous sibling or parent's last child
+                        if (this.selectedNode.parentId) {
+                            const parent = this.nodes.get(this.selectedNode.parentId);
+                            const siblings = parent.children.map(id => this.nodes.get(id));
+                            const currentIndex = siblings.findIndex(n => n.id === this.selectedNode.id);
+                            
+                            if (currentIndex > 0) {
+                                targetNode = siblings[currentIndex - 1];
+                            } else {
+                                // Go to parent
+                                targetNode = parent;
+                            }
+                        }
+                        break;
+                        
+                    case 'ArrowDown':
+                        // Navigate to next sibling or parent's next sibling's last child
+                        if (this.selectedNode.parentId) {
+                            const parent = this.nodes.get(this.selectedNode.parentId);
+                            const siblings = parent.children.map(id => this.nodes.get(id));
+                            const currentIndex = siblings.findIndex(n => n.id === this.selectedNode.id);
+                            
+                            if (currentIndex < siblings.length - 1) {
+                                targetNode = siblings[currentIndex + 1];
+                            } else if (this.selectedNode.children.length > 0) {
+                                // Go to first child
+                                targetNode = this.nodes.get(this.selectedNode.children[0]);
+                            }
+                        } else if (this.selectedNode.children.length > 0) {
+                            targetNode = this.nodes.get(this.selectedNode.children[0]);
+                        }
+                        break;
+                        
+                    case 'ArrowLeft':
+                        // Navigate to parent
+                        if (this.selectedNode.parentId) {
+                            targetNode = this.nodes.get(this.selectedNode.parentId);
+                        }
+                        break;
+                        
+                    case 'ArrowRight':
+                        // Navigate to first child
+                        if (this.selectedNode.children.length > 0) {
+                            targetNode = this.nodes.get(this.selectedNode.children[0]);
+                        }
+                        break;
+                }
+                
+                if (targetNode) {
+                    this.selectNode(targetNode);
+                }
+            }
+            
+            selectNode(node) {
+                this.selectedNode = node;
+                this.render();
+            }
+            
+            findNodeAtPoint(x, y) {
+                for (const [id, node] of this.nodes) {
+                    const nodeX = node.x;
+                    const nodeY = node.y;
+                    const width = this.nodeWidth + this.nodePadding * 2;
+                    const height = this.nodeHeight + this.nodePadding * 2;
+                    
+                    if (x >= nodeX && x <= nodeX + width &&
+                        y >= nodeY && y <= nodeY + height) {
+                        return node;
+                    }
+                }
+                return null;
+            }
+            
+            addChildNode() {
+                if (!this.selectedNode) return;
+                
+                this.saveState('create');
+                
+                const newNode = {
+                    id: this.generateId(),
+                    text: 'New Node',
+                    x: this.selectedNode.x + this.nodeWidth + this.horizontalSpacing,
+                    y: this.selectedNode.y + (this.selectedNode.children.length * (this.nodeHeight + this.verticalSpacing)),
+                    parentId: this.selectedNode.id,
+                    children: [],
+                    color: this.colors[this.currentColorIndex]
+                };
+                
+                this.currentColorIndex = (this.currentColorIndex + 1) % this.colors.length;
+                
+                this.nodes.set(newNode.id, newNode);
+                this.selectedNode.children.push(newNode.id);
+                
+                this.layoutTree();
+                this.selectNode(newNode);
+                this.startEditing(newNode);
+            }
+            
+            addSiblingNode() {
+                if (!this.selectedNode || !this.selectedNode.parentId) return;
+                
+                this.saveState('create');
+                
+                const parent = this.nodes.get(this.selectedNode.parentId);
+                const siblings = parent.children.map(id => this.nodes.get(id));
+                const currentIndex = siblings.findIndex(n => n.id === this.selectedNode.id);
+                
+                const newNode = {
+                    id: this.generateId(),
+                    text: 'New Node',
+                    x: this.selectedNode.x,
+                    y: this.selectedNode.y + this.nodeHeight + this.verticalSpacing,
+                    parentId: parent.id,
+                    children: [],
+                    color: this.colors[this.currentColorIndex]
+                };
+                
+                this.currentColorIndex = (this.currentColorIndex + 1) % this.colors.length;
+                
+                this.nodes.set(newNode.id, newNode);
+                parent.children.splice(currentIndex + 1, 0, newNode.id);
+                
+                this.layoutTree();
+                this.selectNode(newNode);
+                this.startEditing(newNode);
+            }
+            
+            deleteNode() {
+                if (!this.selectedNode || this.selectedNode.parentId === null) return;
+                
+                this.saveState('delete');
+                
+                const parent = this.nodes.get(this.selectedNode.parentId);
+                parent.children = parent.children.filter(id => id !== this.selectedNode.id);
+                
+                // Delete subtree
+                this.deleteSubtree(this.selectedNode.id);
+                
+                this.selectedNode = parent;
+                this.layoutTree();
+                this.render();
+            }
+            
+            deleteSubtree(nodeId) {
+                const node = this.nodes.get(nodeId);
+                if (!node) return;
+                
+                // Delete children first
+                node.children.forEach(childId => this.deleteSubtree(childId));
+                
+                // Delete this node
+                this.nodes.delete(nodeId);
+            }
+            
+            startEditing(node) {
+                this.editingNode = node;
+                
+                // Create input element
+                this.editInput = document.createElement('input');
+                this.editInput.type = 'text';
+                this.editInput.value = node.text;
+                this.editInput.style.cssText = `
+                    position: fixed;
+                    left: ${(node.x + this.offsetX + this.nodePadding) * this.scale}px;
+                    top: ${(node.y + this.offsetY + this.nodePadding) * this.scale}px;
+                    width: ${this.nodeWidth * this.scale}px;
+                    height: ${this.nodeHeight * this.scale}px;
+                    font-size: ${14 * this.scale}px;
+                    border: 2px solid #4285f4;
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                    outline: none;
+                    z-index: 1000;
+                `;
+                
+                document.body.appendChild(this.editInput);
+                this.editInput.focus();
+                this.editInput.select();
+                
+                // Handle input events
+                this.editInput.addEventListener('blur', () => this.stopEditing(true));
+                this.editInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        this.stopEditing(true);
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        this.stopEditing(false);
+                    }
+                });
+            }
+            
+            stopEditing(save) {
+                if (save && this.editInput) {
+                    const newText = this.editInput.value.trim();
+                    if (newText && newText !== this.editingNode.text) {
+                        this.saveState('edit');
+                        this.editingNode.text = newText;
+                    }
+                }
+                
+                if (this.editInput) {
+                    this.editInput.remove();
+                    this.editInput = null;
+                }
+                
+                this.editingNode = null;
+                this.render();
+            }
+            
+            cutNode() {
+                if (!this.selectedNode || this.selectedNode.parentId === null) return;
+                
+                this.saveState('cut');
+                this.copyNode();
+                
+                // Store parent to select after deletion
+                const parent = this.nodes.get(this.selectedNode.parentId);
+                
+                // Delete the node
+                parent.children = parent.children.filter(id => id !== this.selectedNode.id);
+                this.deleteSubtree(this.selectedNode.id);
+                
+                this.selectedNode = parent;
+                this.layoutTree();
+                this.render();
+            }
+            
+            copyNode() {
+                if (!this.selectedNode) return;
+                
+                // Create a deep copy of the node and its subtree
+                this.clipboard = this.copySubtree(this.selectedNode);
+            }
+            
+            copySubtree(node) {
+                const copy = {
+                    id: this.generateId(),
+                    text: node.text,
+                    x: node.x,
+                    y: node.y,
+                    parentId: node.parentId,
+                    children: [],
+                    color: node.color
+                };
+                
+                // Copy children
+                node.children.forEach(childId => {
+                    const child = this.nodes.get(childId);
+                    if (child) {
+                        const childCopy = this.copySubtree(child);
+                        childCopy.parentId = copy.id;
+                        copy.children.push(childCopy.id);
+                        this.nodes.set(childCopy.id, childCopy);
+                    }
+                });
+                
+                return copy;
+            }
+            
+            pasteNode() {
+                if (!this.clipboard || !this.selectedNode) return;
+                
+                this.saveState('paste');
+                
+                // Offset the pasted tree
+                const offsetX = this.nodeWidth + this.horizontalSpacing;
+                const offsetY = 0;
+                
+                this.reparentSubtree(this.clipboard, this.selectedNode.id, offsetX, offsetY);
+                
+                this.selectedNode = this.nodes.get(this.clipboard.id);
+                this.layoutTree();
+                this.render();
+            }
+            
+            reparentSubtree(node, newParentId, offsetX, offsetY) {
+                // Update node position
+                node.x += offsetX;
+                node.y += offsetY;
+                node.parentId = newParentId;
+                
+                // Add to new parent's children
+                const parent = this.nodes.get(newParentId);
+                parent.children.push(node.id);
+                
+                // Process children
+                node.children.forEach(childId => {
+                    const child = this.nodes.get(childId);
+                    if (child) {
+                        this.reparentSubtree(child, node.id, offsetX, offsetY);
+                    }
+                });
+            }
+            
+            cycleNodeColor() {
+                if (!this.selectedNode) return;
+                
+                this.saveState('color');
+                
+                const currentIndex = this.colors.indexOf(this.selectedNode.color);
+                this.selectedNode.color = this.colors[(currentIndex + 1) % this.colors.length];
+                this.render();
+            }
+            
+            saveState(action) {
+                if (this.isUndoRedo) return;
+                
+                // Create a deep copy of the current state
+                const state = {
+                    action: action,
+                    nodes: new Map(),
+                    selectedNodeId: this.selectedNode?.id
+                };
+                
+                this.nodes.forEach((node, id) => {
+                    state.nodes.set(id, {
+                        id: node.id,
+                        text: node.text,
+                        x: node.x,
+                        y: node.y,
+                        parentId: node.parentId,
+                        children: [...node.children],
+                        color: node.color
+                    });
+                });
+                
+                this.undoStack.push(state);
+                this.redoStack = [];
+                
+                // Limit undo stack size
+                if (this.undoStack.length > this.maxUndoSize) {
+                    this.undoStack.shift();
+                }
+            }
+            
+            undo() {
+                if (this.undoStack.length === 0) return;
+                
+                this.isUndoRedo = true;
+                
+                // Save current state to redo stack
+                const currentState = {
+                    nodes: new Map(),
+                    selectedNodeId: this.selectedNode?.id
+                };
+                
+                this.nodes.forEach((node, id) => {
+                    currentState.nodes.set(id, {
+                        id: node.id,
+                        text: node.text,
+                        x: node.x,
+                        y: node.y,
+                        parentId: node.parentId,
+                        children: [...node.children],
+                        color: node.color
+                    });
+                });
+                
+                this.redoStack.push(currentState);
+                
+                // Restore previous state
+                const previousState = this.undoStack.pop();
+                this.restoreState(previousState);
+                
+                this.isUndoRedo = false;
+                this.render();
+            }
+            
+            redo() {
+                if (this.redoStack.length === 0) return;
+                
+                this.isUndoRedo = true;
+                
+                // Save current state to undo stack
+                const currentState = {
+                    nodes: new Map(),
+                    selectedNodeId: this.selectedNode?.id
+                };
+                
+                this.nodes.forEach((node, id) => {
+                    currentState.nodes.set(id, {
+                        id: node.id,
+                        text: node.text,
+                        x: node.x,
+                        y: node.y,
+                        parentId: node.parentId,
+                        children: [...node.children],
+                        color: node.color
+                    });
+                });
+                
+                this.undoStack.push(currentState);
+                
+                // Restore next state
+                const nextState = this.redoStack.pop();
+                this.restoreState(nextState);
+                
+                this.isUndoRedo = false;
+                this.render();
+            }
+            
+            restoreState(state) {
+                // Clear existing nodes
+                this.nodes.clear();
+                
+                // Restore nodes
+                state.nodes.forEach((node, id) => {
+                    this.nodes.set(id, {
+                        id: node.id,
+                        text: node.text,
+                        x: node.x,
+                        y: node.y,
+                        parentId: node.parentId,
+                        children: [...node.children],
+                        color: node.color
+                    });
+                });
+                
+                // Update counter to avoid ID conflicts
+                let maxId = 0;
+                this.nodes.forEach((node) => {
+                    const match = node.id.match(/node_(\d+)/);
+                    if (match) {
+                        maxId = Math.max(maxId, parseInt(match[1]));
+                    }
+                });
+                this.nodeIdCounter = maxId;
+                
+                // Restore selection
+                this.selectedNode = state.selectedNodeId ? this.nodes.get(state.selectedNodeId) : null;
+            }
+            
+            layoutTree() {
+                // Simple tree layout algorithm
+                const root = Array.from(this.nodes.values()).find(n => n.parentId === null);
+                if (!root) return;
+                
+                // Reset positions
+                root.x = 0;
+                root.y = 0;
+                
+                // Layout children
+                this.layoutChildren(root, 0);
+            }
+            
+            layoutChildren(parent, depth) {
+                if (parent.children.length === 0) return;
+                
+                const children = parent.children.map(id => this.nodes.get(id)).filter(Boolean);
+                
+                if (children.length === 0) return;
+                
+                // Calculate total height of children
+                const totalHeight = children.length * (this.nodeHeight + this.verticalSpacing) - this.verticalSpacing;
+                
+                // Position children
+                let startY = parent.y - totalHeight / 2 + (this.nodeHeight + this.verticalSpacing) / 2;
+                
+                children.forEach((child, index) => {
+                    child.x = parent.x + this.nodeWidth + this.horizontalSpacing;
+                    child.y = startY + index * (this.nodeHeight + this.verticalSpacing);
+                    
+                    // Recursively layout grandchildren
+                    this.layoutChildren(child, depth + 1);
+                });
+            }
+            
+            showZoomIndicator() {
+                const percentage = Math.round(this.scale * 100);
+                this.zoomIndicator.textContent = `${percentage}%`;
+                this.zoomIndicator.classList.add('visible');
+                
+                clearTimeout(this.zoomTimeout);
+                this.zoomTimeout = setTimeout(() => {
+                    this.zoomIndicator.classList.remove('visible');
+                }, 1000);
+            }
+            
+            toggleHelp() {
+                this.helpOverlay.classList.toggle('visible');
+                if (this.helpOverlay.classList.contains('visible')) {
+                    this.helpSearch.focus();
+                }
+            }
+            
+            hideHelp() {
+                this.helpOverlay.classList.remove('visible');
+            }
+            
+            filterHelp() {
+                const searchTerm = this.helpSearch.value.toLowerCase();
+                const items = document.querySelectorAll('.shortcut-item');
+                const sections = document.querySelectorAll('.help-section');
+                
+                items.forEach(item => {
+                    const description = item.querySelector('.shortcut-description').textContent.toLowerCase();
+                    const keys = item.querySelector('.shortcut-keys').textContent.toLowerCase();
+                    
+                    if (description.includes(searchTerm) || keys.includes(searchTerm)) {
+                        item.classList.remove('hidden');
+                    } else {
+                        item.classList.add('hidden');
+                    }
+                });
+                
+                // Hide empty sections
+                sections.forEach(section => {
+                    const visibleItems = section.querySelectorAll('.shortcut-item:not(.hidden)');
+                    if (visibleItems.length === 0) {
+                        section.classList.add('hidden');
+                    } else {
+                        section.classList.remove('hidden');
+                    }
+                });
+            }
+            
+            render() {
+                // Clear canvas
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Draw connections first
+                this.drawConnections();
+                
+                // Draw nodes
+                this.nodes.forEach(node => {
+                    this.drawNode(node);
+                });
+            }
+            
+            drawConnections() {
+                this.ctx.strokeStyle = '#999';
+                this.ctx.lineWidth = 2;
+                
+                this.nodes.forEach(node => {
+                    if (node.parentId) {
+                        const parent = this.nodes.get(node.parentId);
+                        if (parent) {
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(
+                                (parent.x + this.nodeWidth + this.nodePadding) * this.scale + this.offsetX,
+                                (parent.y + this.nodeHeight / 2 + this.nodePadding) * this.scale + this.offsetY
+                            );
+                            this.ctx.lineTo(
+                                (node.x + this.nodePadding) * this.scale + this.offsetX,
+                                (node.y + this.nodeHeight / 2 + this.nodePadding) * this.scale + this.offsetY
+                            );
+                            this.ctx.stroke();
+                        }
+                    }
+                });
+            }
+            
+            drawNode(node) {
+                const x = node.x * this.scale + this.offsetX;
+                const y = node.y * this.scale + this.offsetY;
+                const width = (this.nodeWidth + this.nodePadding * 2) * this.scale;
+                const height = (this.nodeHeight + this.nodePadding * 2) * this.scale;
+                const radius = 8 * this.scale;
+                
+                // Draw background
+                this.ctx.fillStyle = node.color;
+                this.ctx.beginPath();
+                this.ctx.roundRect(x, y, width, height, radius);
+                this.ctx.fill();
+                
+                // Draw border for selected node
+                if (this.selectedNode && this.selectedNode.id === node.id) {
+                    this.ctx.strokeStyle = '#4285f4';
+                    this.ctx.lineWidth = 3 * this.scale;
+                    this.ctx.stroke();
+                }
+                
+                // Draw text
+                this.ctx.fillStyle = '#333';
+                this.ctx.font = `${14 * this.scale}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+                this.ctx.textAlign = 'center';
+                this.ctx.textBaseline = 'middle';
+                
+                // Truncate text if too long
+                let text = node.text;
+                const maxWidth = width - 20 * this.scale;
+                while (this.ctx.measureText(text).width > maxWidth && text.length > 3) {
+                    text = text.slice(0, -4) + '...';
+                }
+                
+                this.ctx.fillText(
+                    text,
+                    x + width / 2,
+                    y + height / 2
+                );
+            }
+        }
+        
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', () => {
+            new MindMap();
+        });
+    </script>
+</body>
+</html>

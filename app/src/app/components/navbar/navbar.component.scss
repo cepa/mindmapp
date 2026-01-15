@@ -1,0 +1,60 @@
+:host {
+  display: block;
+}
+
+/* Custom styling for the navbar on desktop */
+@media (min-width: 768px) {
+  .navbar {
+    position: fixed !important;
+    bottom: 20px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: auto !important;
+    max-width: 90% !important;
+    border-radius: 8px !important;
+  }
+
+  .container-fluid {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+}
+
+/* Button styling */
+.btn {
+  min-width: 44px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  transition: all 0.1s ease;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Fix for mobile button pressed state issue */
+@media (hover: none) and (pointer: coarse) {
+  .navbar .btn {
+    /* Prevent Bootstrap's default active state from sticking on mobile */
+    &:active,
+    &.active {
+      transform: none !important;
+      box-shadow: none !important;
+      background-color: transparent !important;
+      border-color: inherit !important;
+      color: inherit !important;
+    }
+
+    /* Add custom active state that properly resets */
+    &:focus {
+      outline: none;
+      box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    }
+  }
+
+  /* Fix for touch event handling */
+  .navbar {
+    touch-action: manipulation;
+  }
+}

@@ -1,0 +1,54 @@
+<nav class="navbar navbar-expand-sm fixed-bottom navbar-light bg-white shadow-sm">
+  <div class="container-fluid d-flex justify-content-center">
+    <div class="d-flex flex-wrap gap-2">
+      <!-- Add Child Node Button -->
+      <button type="button" class="btn btn-outline-primary d-flex align-items-center gap-1"
+              (click)="addChildNode()">
+        <i class="fas fa-plus"></i>
+        <span class="d-none d-sm-inline">Add</span>
+      </button>
+
+      <!-- Delete Selected Node Button -->
+      <button type="button" class="btn btn-outline-danger d-flex align-items-center gap-1"
+              (click)="deleteSelectedNode()">
+        <i class="fas fa-minus"></i>
+        <span class="d-none d-sm-inline">Del</span>
+      </button>
+
+      <!-- Download Button -->
+      <button type="button" class="btn btn-outline-success d-flex align-items-center gap-1"
+              (click)="downloadMindMap()">
+        <i class="fas fa-download"></i>
+        <span class="d-none d-sm-inline">Save</span>
+      </button>
+
+      <!-- Upload Button -->
+      <button type="button" class="btn btn-outline-secondary d-flex align-items-center gap-1"
+              (click)="uploadMindMap()">
+        <i class="fas fa-upload"></i>
+        <span class="d-none d-sm-inline">Load</span>
+      </button>
+
+      <!-- Help Button -->
+      <button type="button" class="btn btn-outline-info d-flex align-items-center gap-1"
+              (click)="showHelp()">
+        <i class="fas fa-question-circle"></i>
+        <span class="d-none d-sm-inline">Help</span>
+      </button>
+
+      <!-- Reset Map Button -->
+      <button type="button" class="btn btn-outline-warning d-flex align-items-center gap-1"
+              (click)="resetMap()">
+        <i class="fas fa-trash-alt"></i>
+        <span class="d-none d-sm-inline">Reset</span>
+      </button>
+
+      <!-- Fit View Button -->
+      <button type="button" class="btn btn-outline-secondary d-flex align-items-center gap-1"
+              (click)="fitView()">
+        <i class="fas fa-expand"></i>
+        <span class="d-none d-sm-inline">Fit</span>
+      </button>
+    </div>
+  </div>
+</nav>

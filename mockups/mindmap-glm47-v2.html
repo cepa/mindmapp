@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Mindmap</title>
+    <style>
+        :root {
+            --bg-color: #f4f4f9;
+            --node-bg: #ffffff;
+            --text-color: #333;
+            --line-color: #999;
+            --selection-color: #007bff;
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: var(--font-family);
+            user-select: none; /* Prevent text selection while dragging */
+        }
+
+        /* Canvas Area */
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            cursor: grab;
+            touch-action: none; /* Prevent default touch scrolling */
+        }
+
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+
+        /* The scalable/movable world */
+        #mindmap-world {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: 0 0;
+        }
+
+        /* SVG Layer for Connections */
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            overflow: visible;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        path {
+            fill: none;
+            stroke: var(--line-color);
+            stroke-width: 2px;
+        }
+
+        /* Node Styling */
+        .node {
+            position: absolute;
+            background: var(--node-bg);
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+            color: var(--text-color);
+            min-width: 50px;
+            max-width: 300px;
+            z-index: 1;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: box-shadow 0.2s, border-color 0.2s;
+            text-align: center;
+        }
+
+        .node:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        .node.selected {
+            border-color: var(--selection-color);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.3);
+        }
+
+        .node-content {
+            outline: none;
+            cursor: text;
+        }
+
+        /* UI Overlays */
+        #ui-layer {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn {
+            background: #fff;
+            border: 1px solid #ccc;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .btn:hover {
+            background: #f0f0f0;
+        }
+
+        #zoom-display {
+            background: rgba(255, 255, 255, 0.8);
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            pointer-events: none;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+        }
+
+        /* Help Modal */
+        #help-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 200;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #help-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        #help-content h2 { margin-top: 0; }
+        
+        .shortcut-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .shortcut-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        kbd {
+            background: #eee;
+            border-radius: 3px;
+            border: 1px solid #b4b4b4;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.2), 0 2px 0 0 rgba(255,255,255,0.7) inset;
+            color: #333;
+            display: inline-block;
+            font-size: 0.85em;
+            font-weight: 700;
+            line-height: 1;
+            padding: 2px 4px;
+            white-space: nowrap;
+        }
+
+        /* Context Menu for Colors */
+        #context-menu {
+            position: absolute;
+            display: none;
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 4px;
+            padding: 5px;
+            z-index: 50;
+        }
+        
+        .color-option {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: inline-block;
+            margin: 2px;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Canvas -->
+    <div id="canvas-container">
+        <div id="mindmap-world">
+            <svg id="connections"></svg>
+            <div id="nodes"></div>
+        </div>
+    </div>
+
+    <!-- UI Elements -->
+    <div id="ui-layer">
+        <button class="btn" id="help-btn">?</button>
+    </div>
+
+    <div id="zoom-display">100%</div>
+
+    <!-- Help Overlay [1] -->
+    <div id="help-overlay">
+        <div id="help-content">
+            <h2>Keyboard Shortcuts</h2>
+            <ul class="shortcut-list">
+                <li><span>Navigate Nodes</span> <span><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></span></li>
+                <li><span>Create Child</span> <span><kbd>Tab</kbd></span></li>
+                <li><span>Edit Text</span> <span><kbd>Enter</kbd> / DblClick</span></li>
+                <li><span>Delete Node</span> <span><kbd>Del</kbd></span></li>
+                <li><span>Undo/Redo</span> <span><kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd></span></li>
+                <li><span>Cut/Copy/Paste</span> <span><kbd>Ctrl+X</kbd> <kbd>C</kbd> <kbd>V</kbd></span></li>
+                <li><span>Pan Canvas</span> <span><kbd>Space</kbd> + Drag</span></li>
+                <li><span>Zoom</span> <span><kbd>Mouse Wheel</kbd></span></li>
+                <li><span>Close Help</span> <span><kbd>Esc</kbd></span></li>
+            </ul>
+            <div style="text-align: right; margin-top: 20px;">
+                <button class="btn" id="close-help">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Color Context Menu -->
+    <div id="context-menu">
+        <div class="color-option" style="background:#ffffff;" data-color="#ffffff"></div>
+        <div class="color-option" style="background:#ffadad;" data-color="#ffadad"></div>
+        <div class="color-option" style="background:#ffd6a5;" data-color="#ffd6a5"></div>
+        <div class="color-option" style="background:#fdffb6;" data-color="#fdffb6"></div>
+        <div class="color-option" style="background:#caffbf;" data-color="#caffbf"></div>
+        <div class="color-option" style="background:#9bf6ff;" data-color="#9bf6ff"></div>
+        <div class="color-option" style="background:#a0c4ff;" data-color="#a0c4ff"></div>
+        <div class="color-option" style="background:#bdb2ff;" data-color="#bdb2ff"></div>
+    </div>
+
+    <script>
+        /**
+         * Mindmap Application
+         * Implements user stories for Navigation, Shortcuts, and Canvas control [1].
+         */
+
+        // --- State Management ---
+        const state = {
+            nodes: [
+                { id: 1, text: "Central Topic", x: 0, y: 0, parentId: null, color: "#ffffff" }
+            ],
+            selectedNodeId: 1,
+            camera: { x: window.innerWidth / 2, y: window.innerHeight / 2, zoom: 1 },
+            history: [],
+            historyIndex: -1,
+            clipboard: null, // { type: 'copy'|'cut', nodes: [] }
+            isDraggingNode: false,
+            isPanning: false,
+            lastMousePos: { x: 0, y: 0 }
+        };
+
+        const MAX_HISTORY = 50; // Limit stack to 50 [1]
+
+        // --- DOM Elements ---
+        const container = document.getElementById('canvas-container');
+        const world = document.getElementById('mindmap-world');
+        const nodesDiv = document.getElementById('nodes');
+        const svgLayer = document.getElementById('connections');
+        const zoomDisplay = document.getElementById('zoom-display');
+        const helpOverlay = document.getElementById('help-overlay');
+        const contextMenu = document.getElementById('context-menu');
+
+        // --- Initialization ---
+        function init() {
+            render();
+            updateTransform();
+            saveState(); // Initial state
+        }
+
+        // --- History / Undo / Redo [1] ---
+        function saveState() {
+            // Remove any future history if we were in the middle of undoing
+            if (state.historyIndex < state.history.length - 1) {
+                state.history = state.history.slice(0, state.historyIndex + 1);
+            }
+            
+            // Deep copy nodes for snapshot
+            const snapshot = JSON.parse(JSON.stringify(state.nodes));
+            
+            state.history.push(snapshot);
+            
+            // Limit stack size [1]
+            if (state.history.length > MAX_HISTORY) {
+                state.history.shift();
+            } else {
+                state.historyIndex++;
+            }
+        }
+
+        function undo() {
+            if (state.historyIndex > 0) {
+                state.historyIndex--;
+                restoreState(state.history[state.historyIndex]);
+            }
+        }
+
+        function redo() {
+            if (state.historyIndex < state.history.length - 1) {
+                state.historyIndex++;
+                restoreState(state.history[state.historyIndex]);
+            }
+        }
+
+        function restoreState(snapshot) {
+            state.nodes = JSON.parse(JSON.stringify(snapshot));
+            // Ensure selection is valid or reset
+            if (!state.nodes.find(n => n.id === state.selectedNodeId)) {
+                state.selectedNodeId = state.nodes[0]?.id || null;
+            }
+            render();
+            updateTransform();
+        }
+
+        // --- Core Logic ---
+
+        function generateId() {
+            return '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        function getNode(id) {
+            return state.nodes.find(n => n.id === id);
+        }
+
+        function getChildren(parentId) {
+            return state.nodes.filter(n => n.parentId === parentId);
+        }
+
+        function createNode(parentId) {
+            const parent = getNode(parentId);
+            if (!parent) return;
+
+            // Simple layout logic: place to the right of parent, slightly offset
+            const siblings = getChildren(parentId);
+            const offset = siblings.length * 60;
+            
+            const newNode = {
+                id: generateId(),
+                text: "New Node",
+                x: parent.x + 200, // Offset x
+                y: parent.y + offset - ((siblings.length - 1) * 30), // Center vertically around parent roughly
+                parentId: parentId,
+                color: "#ffffff"
+            };
+
+            state.nodes.push(newNode);
+            state.selectedNodeId = newNode.id;
+            saveState();
+            render();
+            
+            // Focus new node for editing immediately
+            setTimeout(() => {
+                const el = document.getElementById(newNode.id);
+                const content = el.querySelector('.node-content');
+                if(content) {
+                    content.focus();
+                    document.execCommand('selectAll', false, null);
+                }
+            }, 50);
+        }
+
+        function deleteNode(id) {
+            const index = state.nodes.findIndex(n => n.id === id);
+            if (index === -1) return;
+            
+            const node = state.nodes[index];
+            if (!node.parentId) return; // Don't delete root
+
+            // Find all descendants (subtree)
+            const toDelete = [id];
+            let i = 0;
+            while(i < toDelete.length) {
+                const children = getChildren(toDelete[i]);
+                children.forEach(c => toDelete.push(c.id));
+                i++;
+            }
+
+            state.nodes = state.nodes.filter(n => !toDelete.includes(n.id));
+            state.selectedNodeId = node.parentId;
+            saveState();
+            render();
+        }
+
+        function updateNodeText(id, text) {
+            const node = getNode(id);
+            if (node) {
+                node.text = text;
+                // We don't save state on every keystroke, usually on blur or specific command
+                // For simplicity here, we save on 'Enter' or focus out, not every input.
+                renderLines(); // Re-render lines in case width changes
+            }
+        }
+
+        function updateNodePos(id, x, y) {
+            const node = getNode(id);
+            if (node) {
+                node.x = x;
+                node.y = y;
+                render(); // Full render to update lines
+            }
+        }
+
+        function updateNodeColor(id, color) {
+            const node = getNode(id);
+            if (node) {
+                node.color = color;
+                saveState();
+                render();
+            }
+        }
+
+        // --- Clipboard Operations [1] ---
+        function cutSelection() {
+            if (!state.selectedNodeId) return;
+            const node = getNode(state.selectedNodeId);
+            if (!node || !node.parentId) return; // Cannot cut root
+
+            // Collect subtree
+            const subtree = collectSubtree(state.selectedNodeId);
+            
+            state.clipboard = {
+                type: 'cut',
+                data: subtree
+            };
+
+            // Logic to actually delete handles in 'paste' for cut, or we can delete now?
+            // Standard UX: Cut removes immediately, Clipboard holds it.
+            // But simpler to implement Cut as Copy + Delete.
+            deleteNode(state.selectedNodeId);
+        }
+
+        function copySelection() {
+            if (!state.selectedNodeId) return;
+            const node = getNode(state.selectedNodeId);
+            if (!node) return;
+
+            state.clipboard = {
+                type: 'copy',
+                data: collectSubtree(state.selectedNodeId)
+            };
+        }
+
+        function pasteSelection() {
+            if (!state.clipboard || !state.selectedNodeId) return;
+            
+            const newParentId = state.selectedNodeId;
+            const newIdsMap = {};
+            
+            // Clone data and regenerate IDs [1]
+            const clonedNodes = state.clipboard.data.map(n => {
+                const newId = generateId();
+                newIdsMap[n.id] = newId;
+                return { ...n, id: newId, parentId: null }; // ParentId updated below
+            });
+
+            // Update parent references
+            clonedNodes.forEach(n => {
+                if (newIdsMap[n.parentId]) {
+                    n.parentId = newIdsMap[n.parentId];
+                } else {
+                    n.parentId = newParentId; // The root of the pasted subtree attaches to selection
+                }
+                // Offset position slightly
+                n.x += 20;
+                n.y += 20;
+            });
+
+            state.nodes.push(...clonedNodes);
+            saveState();
+            render();
+        }
+
+        function collectSubtree(rootId) {
+            const ids = [rootId];
+            let i = 0;
+            while(i < ids.length) {
+                getChildren(ids[i]).forEach(c => ids.push(c.id));
+                i++;
+            }
+            return state.nodes.filter(n => ids.includes(n.id));
+        }
+
+        // --- Navigation [1] ---
+        
+        // Helper to find next sibling visually
+        function findSibling(currentId, direction) {
+            const current = getNode(currentId);
+            if (!current || !current.parentId) return null;
+            
+            const siblings = getChildren(current.parentId).sort((a,b) => a.y - b.y);
+            const idx = siblings.findIndex(s => s.id === currentId);
+            
+            let nextIdx = idx + direction;
+            // Wrap logically [1]
+            if (nextIdx < 0) nextIdx = siblings.length - 1;
+            if (nextIdx >= siblings.length) nextIdx = 0;
+            
+            return siblings[nextIdx].id;
+        }
+
+        function navigate(direction) {
+            const current = getNode(state.selectedNodeId);
+            if (!current) return;
+
+            let nextId = null;
+
+            if (direction === 'ArrowRight') {
+                const children = getChildren(state.selectedNodeId);
+                if (children.length > 0) {
+                    // Go to first child (visually closest to center? usually topmost)
+                    // Sorting strictly by Y
+                    children.sort((a,b) => a.y - b.y);
+                    nextId = children[0].id;
+                }
+            } else if (direction === 'ArrowLeft') {
+                if (current.parentId) {
+                    nextId = current.parentId;
+                }
+            } else if (direction === 'ArrowDown' || direction === 'ArrowUp') {
+                nextId = findSibling(state.selectedNodeId, direction === 'ArrowDown' ? 1 : -1);
+            }
+
+            if (nextId) {
+                state.selectedNodeId = nextId;
+                render();
+                ensureVisible(nextId);
+            }
+        }
+
+        function ensureVisible(nodeId) {
+            const node = getNode(nodeId);
+            if(!node) return;
+            // Basic pan to keep selected in view could be added here
+            // For now, we just select.
+        }
+
+        // --- Rendering ---
+
+        function render() {
+            // Render Nodes
+            nodesDiv.innerHTML = '';
+            state.nodes.forEach(node => {
+                const el = document.createElement('div');
+                el.className = `node ${node.id === state.selectedNodeId ? 'selected' : ''}`;
+                el.id = node.id;
+                el.style.left = `${node.x}px`;
+                el.style.top = `${node.y}px`;
+                el.style.backgroundColor = node.color;
+                el.style.transform = 'translate(-50%, -50%)'; // Center on coordinate
+
+                const content = document.createElement('span');
+                content.className = 'node-content';
+                content.contentEditable = true;
+                content.innerText = node.text;
+                
+                // Interaction Handlers
+                el.onmousedown = (e) => handleNodeMouseDown(e, node.id);
+                content.onblur = (e) => {
+                    if(node.text !== e.target.innerText) {
+                        updateNodeText(node.id, e.target.innerText);
+                        saveState(); // Save history on edit finish
+                    }
+                };
+                content.onkeydown = (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        e.target.blur();
+                    }
+                };
+
+                el.appendChild(content);
+                nodesDiv.appendChild(el);
+            });
+
+            renderLines();
+        }
+
+        function renderLines() {
+            svgLayer.innerHTML = '';
+            state.nodes.forEach(node => {
+                if (node.parentId) {
+                    const parent = getNode(node.parentId);
+                    if (parent) {
+                        drawConnection(parent, node);
+                    }
+                }
+            });
+        }
+
+        function drawConnection(p1, p2) {
+            // Bezier curve
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            
+            // Simple logic: Curve out from right of parent, in from left of child
+            // Calculate bounding boxes roughly or just use center points
+            // Since we translate(-50%, -50%), x,y is center.
+            
+            const startX = p1.x; 
+            const startY = p1.y;
+            const endX = p2.x;
+            const endY = p2.y;
+
+            // Control points for bezier
+            const dist = Math.abs(endX - startX) * 0.5;
+            const cp1x = startX + dist;
+            const cp1y = startY;
+            const cp2x = endX - dist;
+            const cp2y = endY;
+
+            const d = `M ${startX} ${startY} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endX} ${endY}`;
+            
+            path.setAttribute('d', d);
+            svgLayer.appendChild(path);
+        }
+
+        function updateTransform() {
+            world.style.transform = `translate(${state.camera.x}px, ${state.camera.y}px) scale(${state.camera.zoom})`;
+            zoomDisplay.innerText = Math.round(state.camera.zoom * 100) + '%';
+        }
+
+        // --- Event Listeners: Canvas Navigation (Pan/Zoom) [1] ---
+
+        container.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomSensitivity = 0.001;
+            const delta = -e.deltaY * zoomSensitivity;
+            const newZoom = Math.min(Math.max(state.camera.zoom + delta, 0.3), 3.0); // Limits [1]
+
+            // Zoom centered on cursor [1]
+            const rect = container.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Calculate world point under mouse before zoom
+            const worldX = (mouseX - state.camera.x) / state.camera.zoom;
+            const worldY = (mouseY - state.camera.y) / state.camera.zoom;
+
+            state.camera.zoom = newZoom;
+
+            // Adjust camera.x/y to keep world point under mouse
+            state.camera.x = mouseX - worldX * state.camera.zoom;
+            state.camera.y = mouseY - worldY * state.camera.zoom;
+
+            updateTransform();
+            showZoomTemp();
+        });
+
+        // Pinch zoom support (basic touch)
+        let initialPinchDist = 0;
+        container.addEventListener('touchstart', (e) => {
+            if(e.touches.length === 2) {
+                initialPinchDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            }
+        }, {passive: false});
+
+        container.addEventListener('touchmove', (e) => {
+             if(e.touches.length === 2) {
+                e.preventDefault();
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                const delta = dist - initialPinchDist;
+                const newZoom = Math.min(Math.max(state.camera.zoom + delta * 0.005, 0.3), 3.0);
+                state.camera.zoom = newZoom;
+                initialPinchDist = dist;
+                updateTransform();
+                showZoomTemp();
+             }
+        }, {passive: false});
+
+
+        let zoomTimeout;
+        function showZoomTemp() {
+            zoomDisplay.style.opacity = 1;
+            clearTimeout(zoomTimeout);
+            zoomTimeout = setTimeout(() => {
+                zoomDisplay.style.opacity = 0.7;
+            }, 1000);
+        }
+
+        container.addEventListener('mousedown', (e) => {
+            // Middle mouse or Space+Click or Click on bg
+            if (e.button === 1 || e.button === 0 && (e.target === container || e.target === svgLayer)) {
+                state.isPanning = true;
+                state.lastMousePos = { x: e.clientX, y: e.clientY };
+                container.style.cursor = 'grabbing';
+                e.preventDefault(); // Prevent text selection
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (state.isPanning) {
+                const dx = e.clientX - state.lastMousePos.x;
+                const dy = e.clientY - state.lastMousePos.y;
+                state.camera.x += dx;
+                state.camera.y += dy;
+                state.lastMousePos = { x: e.clientX, y: e.clientY };
+                updateTransform();
+            } else if (state.isDraggingNode && state.selectedNodeId) {
+                // Move node
+                const node = getNode(state.selectedNodeId);
+                // Need to account for zoom in delta
+                const dx = (e.clientX - state.lastMousePos.x) / state.camera.zoom;
+                const dy = (e.clientY - state.lastMousePos.y) / state.camera.zoom;
+                
+                updateNodePos(node.id, node.x + dx, node.y + dy);
+                state.lastMousePos = { x: e.clientX, y: e.clientY };
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (state.isPanning) {
+                state.isPanning = false;
+                container.style.cursor = 'grab';
+            }
+            if (state.isDraggingNode) {
+                state.isDraggingNode = false;
+                saveState(); // Save state after move is done
+            }
+        });
+
+        function handleNodeMouseDown(e, id) {
+            if (e.button !== 0) return; // Only Left Click
+            e.stopPropagation(); // Don't trigger pan
+            
+            state.selectedNodeId = id;
+            render();
+            
+            state.isDraggingNode = true;
+            state.lastMousePos = { x: e.clientX, y: e.clientY };
+        }
+
+        // --- Keyboard Shortcuts [1] ---
+        window.addEventListener('keydown', (e) => {
+            // Help Overlay handling
+            if (helpOverlay.style.display === 'flex') {
+                if (e.key === 'Escape') toggleHelp(false);
+                return;
+            }
+
+            // Editing handling: Don't trigger shortcuts when typing in a node
+            if (e.target.isContentEditable) return;
+
+            if (e.key === 'Escape') {
+                contextMenu.style.display = 'none';
+            }
+
+            // Undo/Redo [1]
+            if (e.ctrlKey && e.key === 'z') {
+                e.preventDefault();
+                undo();
+            } else if (e.ctrlKey && e.key === 'y') {
+                e.preventDefault();
+                redo();
+            }
+
+            // Clipboard [1]
+            if (e.ctrlKey && e.key === 'x') {
+                e.preventDefault();
+                cutSelection();
+            } else if (e.ctrlKey && e.key === 'c') {
+                e.preventDefault();
+                copySelection();
+            } else if (e.ctrlKey && e.key === 'v') {
+                e.preventDefault();
+                pasteSelection();
+            }
+
+            // Navigation Arrows [1]
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+                navigate(e.key);
+            }
+
+            // Create Child
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                if (state.selectedNodeId) createNode(state.selectedNodeId);
+            }
+
+            // Delete
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (state.selectedNodeId) deleteNode(state.selectedNodeId);
+            }
+
+            // Enter to edit
+            if (e.key === 'Enter' && state.selectedNodeId) {
+                const el = document.getElementById(state.selectedNodeId);
+                const content = el.querySelector('.node-content');
+                if(content) {
+                    content.focus();
+                    document.execCommand('selectAll', false, null);
+                }
+            }
+
+            // Space panning (if not editing)
+            if (e.code === 'Space' && !e.repeat) {
+                // Visual feedback could be added here
+            }
+        });
+
+        // --- Context Menu (Right Click for Colors) ---
+        window.addEventListener('contextmenu', (e) => {
+            if (e.target.closest('.node')) {
+                e.preventDefault();
+                const nodeEl = e.target.closest('.node');
+                state.selectedNodeId = nodeEl.id;
+                render(); // Update selection visual
+
+                contextMenu.style.display = 'block';
+                contextMenu.style.left = e.clientX + 'px';
+                contextMenu.style.top = e.clientY + 'px';
+            } else {
+                contextMenu.style.display = 'none';
+            }
+        });
+
+        document.querySelectorAll('.color-option').forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                const color = e.target.getAttribute('data-color');
+                if (state.selectedNodeId) {
+                    updateNodeColor(state.selectedNodeId, color);
+                }
+                contextMenu.style.display = 'none';
+            });
+        });
+
+        // --- Help System [1] ---
+        function toggleHelp(show) {
+            helpOverlay.style.display = show ? 'flex' : 'none';
+        }
+
+        document.getElementById('help-btn').addEventListener('click', () => toggleHelp(true));
+        document.getElementById('close-help').addEventListener('click', () => toggleHelp(false));
+        // Close on click outside
+        helpOverlay.addEventListener('click', (e) => {
+            if (e.target === helpOverlay) toggleHelp(false);
+        });
+
+        // Start
+        init();
+
+    </script>
+</body>
+</html>

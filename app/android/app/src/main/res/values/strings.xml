@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">rnd-mindmapp</string>
+    <string name="title_activity_main">rnd-mindmapp</string>
+    <string name="package_name">net.devgrid.rnd.mindmapp</string>
+    <string name="custom_url_scheme">net.devgrid.rnd.mindmapp</string>
+</resources>
