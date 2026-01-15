@@ -2,6 +2,12 @@
 
 An intuitive mind mapping application for organizing thoughts, brainstorming ideas, and creating visual representations of your concepts.
 
+Try out MindMapp here: [https://mindm.app](https://mindm.app)
+
+![](app/public/ogimage.jpg)
+
+MindMapp was created by AI. Less than 1% of the code was written by human being.
+
 ## Features
 
 - **Drag & Drop Interface**: Easily create, move, and organize nodes
